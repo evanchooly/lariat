@@ -1,7 +1,5 @@
 apply plugin: 'java'
 
-name = 'curator'
-
 repositories {
     mavenLocal()
     mavenCentral()
