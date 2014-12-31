@@ -19,18 +19,20 @@ import java.util.List;
 import static java.lang.String.format;
 import static org.testng.Assert.assertEquals;
 
-public class CuratorInterceptorTest {
+public class CuratorTest {
 
     public static final String DB_NAME = "curator_test";
     public static final String ARCH_COLLECTION_NAME = "records_archive";
     private MongoClient mongoClient;
     private Morphia morphia = new Morphia();
     private Datastore datastore;
+    private Curator curator;
 
-    public CuratorInterceptorTest() throws UnknownHostException {
+    public CuratorTest() throws UnknownHostException {
         mongoClient = new MongoClient();
         datastore = new DatastoreImpl(morphia, mongoClient, DB_NAME);
-        morphia.getMapper().addInterceptor(new CuratorInterceptor(datastore, morphia.getMapper()));
+        curator = new Curator(datastore, morphia);
+        morphia.getMapper().addInterceptor(curator);
     }
 
     @BeforeTest
@@ -39,7 +41,7 @@ public class CuratorInterceptorTest {
     }
 
     @Test
-    public void testPreSave() throws Exception {
+    public void archiving() throws Exception {
         assertEquals(count(ARCH_COLLECTION_NAME), 0, "Should find 0 archived records");
         morphia.map(Record.class);
 
@@ -53,24 +55,45 @@ public class CuratorInterceptorTest {
         }
     }
 
+    @Test
+    public void rollbacks() {
+        assertEquals(count(ARCH_COLLECTION_NAME), 0, "Should find 0 archived records");
+        morphia.map(Record.class);
+
+        final Record record = new Record("Record 1", "Value 0");
+        datastore.save(record);
+
+        validate(record, 0);
+
+        final String content = "I should get rolledback";
+        datastore.save(record.setContent(content));
+        DBObject archived = get(ARCH_COLLECTION_NAME).get(0);
+        assertEquals(archived.get("content"), "Value 0");
+        assertEquals(archived.get(ArchiveDao.ARCHIVE_ID), record.getId());
+        assertEquals(archived.get(ArchiveDao.ARCH_NUM), 0L);
+
+        assertEquals(datastore.find(Record.class).get().getContent(), content);
+
+        curator.rollback(record);
+
+        assertEquals(datastore.find(Record.class).get().getContent(), "Value 0");
+    }
+
     private void validate(final Record record, final long count) {
-        System.out.println("\n\n\nrecord = [" + record + "], count = [" + count + "]");
         assertEquals(count(ARCH_COLLECTION_NAME), count, format("Should find %d archived records", count));
         List<DBObject> list = get(ARCH_COLLECTION_NAME);
         long index = 0;
         for (DBObject item : list) {
-            System.out.println("index = " + index);
-            System.out.println("item = " + item);
             assertEquals(item.get("content"), "Value " + index);
-            assertEquals(item.get(CuratorInterceptor.ARCHIVE_ID), record.getId());
-            assertEquals(item.get(CuratorInterceptor.ARCH_NUM), index);
+            assertEquals(item.get(ArchiveDao.ARCHIVE_ID), record.getId());
+            assertEquals(item.get(ArchiveDao.ARCH_NUM), index);
             index++;
         }
     }
 
     private List<DBObject> get(final String collectionName) {
         final DBCollection collection = mongoClient.getDB(DB_NAME).getCollection(collectionName);
-        final DBCursor limit = collection.find().sort(new BasicDBObject(CuratorInterceptor.ARCH_NUM, 1));
+        final DBCursor limit = collection.find().sort(new BasicDBObject(ArchiveDao.ARCH_NUM, 1));
         final List<DBObject> list = new ArrayList<>();
         for (DBObject dbObject : limit) {
             list.add(dbObject);

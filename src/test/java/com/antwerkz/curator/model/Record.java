@@ -14,6 +14,9 @@ public class Record {
     private String name;
     private String content;
 
+    public Record() {
+    }
+
     public Record(final String name, final String content) {
         this.name = name;
         this.content = content;
