@@ -1,0 +1,23 @@
+apply plugin: 'java'
+
+name = 'curator'
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    jcenter()
+}
+
+test {
+    useTestNG()
+}
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
+
+dependencies {
+    compile 'org.slf4j:slf4j-api:1.7.5'
+    compile 'org.mongodb.morphia:morphia:0.109'
+
+    testCompile 'org.testng:testng:6.8.1'
+}
