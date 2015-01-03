@@ -77,6 +77,8 @@ public class CuratorTest {
         curator.rollback(record);
 
         assertEquals(datastore.find(Record.class).get().getContent(), "Value 0");
+
+        assertEquals(count(ARCH_COLLECTION_NAME), 1, "Should find 1 archived records");
     }
 
     private void validate(final Record record, final long count) {
