@@ -1,5 +1,15 @@
 apply plugin: 'java'
+apply plugin: 'com.evanchooly.nexus'
 
+buildscript {
+    repositories {
+        jcenter()
+    }
+
+    dependencies {
+        classpath 'com.evanchooly:gradle-nexus-plugin:2.2'
+    }
+}
 repositories {
     mavenLocal()
     mavenCentral()
@@ -19,4 +29,45 @@ dependencies {
 
     testCompile 'com.jayway.awaitility:awaitility:1.6.1'
     testCompile 'org.testng:testng:6.8.1'
+}
+
+modifyPom {
+    project {
+        name 'Morphia Archiving Plugin'
+        description 'Morphia extension that transparently archives old versions of entities allowing for rollbacks'
+        url 'https://github.com/evanchooly/morchivist'
+        inceptionYear '2014'
+
+        scm {
+            url 'https://github.com/evanchooly/morchivist'
+            connection 'scm:https://github.com/evanchooly/morchivist.git'
+            developerConnection 'scm:git@github.com:evanchooly/morchivist.git'
+        }
+
+        licenses {
+            license {
+                name 'The Apache Software License, Version 2.0'
+                url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                distribution 'repo'
+            }
+        }
+
+        developers {
+            developer {
+                id 'evanchooly'
+                name 'Justin Lee'
+                email 'jlee@antwerkz.com'
+            }
+        }
+    }
+}
+
+extraArchive {
+    sources = true
+    tests = true
+    javadoc = true
+}
+
+nexus {
+    sign = true
 }
