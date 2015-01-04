@@ -17,5 +17,6 @@ dependencies {
     compile 'org.slf4j:slf4j-api:1.7.5'
     compile 'org.mongodb.morphia:morphia:0.109'
 
+    testCompile 'com.jayway.awaitility:awaitility:1.6.1'
     testCompile 'org.testng:testng:6.8.1'
 }

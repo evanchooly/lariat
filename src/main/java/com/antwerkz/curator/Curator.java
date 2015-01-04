@@ -2,8 +2,12 @@ package com.antwerkz.curator;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
-import static com.antwerkz.curator.ArchiveDao.*;
+import static com.antwerkz.curator.ArchiveDao.ARCHIVE_ID;
+import static com.antwerkz.curator.ArchiveDao.ARCH_NUM;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DB;
 import com.mongodb.DBCollection;
@@ -21,7 +25,9 @@ public class Curator implements EntityInterceptor {
 
   private Mapper mapper;
 
-  private Map<MappedClass, String> collections = new HashMap<>();
+  private Map<MappedClass, ArchivedEntity> collections = new HashMap<>();
+
+  private ThreadPoolExecutor executor;
 
   public Curator(final Datastore datastore, final Morphia morphia) {
     this.datastore = datastore;
@@ -30,13 +36,23 @@ public class Curator implements EntityInterceptor {
     mapper.getMappedClasses().stream()
         .filter(m -> m.getAnnotation(Archived.class) != null)
         .forEach(this::register);
+    executor = new ThreadPoolExecutor(2, 10, 1, TimeUnit.MINUTES, new ArrayBlockingQueue<>(100));
   }
 
-  private void register(final MappedClass mapped) {
+  private ArchivedEntity register(final MappedClass mapped) {
     final Archived annotation = mapped.getClazz().getAnnotation(Archived.class);
+    ArchivedEntity archivedEntity = null;
     if (annotation != null) {
-      collections.put(mapped, calculateName(mapped, annotation));
+      final String name = calculateName(mapped, annotation);
+      final DBCollection collection = datastore.getDB().getCollection(name);
+      collection
+          .createIndex(new BasicDBObject(ARCHIVE_ID, 1).append(ARCH_NUM, -1), new BasicDBObject("name", "archiveId"));
+      collection.createIndex(new BasicDBObject(ARCH_NUM, -1), new BasicDBObject("name", "archiveNumber"));
+
+      archivedEntity = new ArchivedEntity(name, annotation.count());
+      collections.put(mapped, archivedEntity);
     }
+    return archivedEntity;
   }
 
   @SuppressWarnings("unchecked")
@@ -54,17 +70,21 @@ public class Curator implements EntityInterceptor {
     return t;
   }
 
-  private long getNextArchiveNum(final DBCollection collection, final DBObject archived) {
-    final DBObject one = collection
-        .findOne(new BasicDBObject(ARCHIVE_ID, archived.get(ARCHIVE_ID)),
-            new BasicDBObject(ARCH_NUM, 1),
-            new BasicDBObject(ARCH_NUM, -1));
-    return one != null ? (Long) one.get(ARCH_NUM) + 1 : 0;
+  private long getNextArchiveNum(final DBCollection collection, final Object archivedId) {
+    return getLatestArchiveNum(collection, archivedId) + 1;
   }
 
-  private DBObject fetchForArchiving(final Object ent, final DBObject dbObj) {
+  private long getLatestArchiveNum(final DBCollection collection, final Object archivedId) {
+    final DBObject latest = collection.findOne(
+        new BasicDBObject(ARCHIVE_ID, archivedId),
+        new BasicDBObject(ARCH_NUM, 1),
+        new BasicDBObject(ARCH_NUM, -1));
+    return latest != null ? (Long) latest.get(ARCH_NUM) : -1;
+  }
+
+  private DBObject fetchForArchiving(final MappedClass mappedClass, final DBObject dbObj) {
     final DB db = datastore.getDB();
-    final DBCollection collection = db.getCollection(mapper.getMappedClass(ent).getCollectionName());
+    final DBCollection collection = db.getCollection(mappedClass.getCollectionName());
     final BasicDBObject archived = new BasicDBObject();
     archived.putAll(collection.findOne(new BasicDBObject("_id", dbObj.get("_id"))));
     archived.put(ARCHIVE_ID, archived.remove("_id"));
@@ -72,12 +92,11 @@ public class Curator implements EntityInterceptor {
   }
 
   public String getArchiveCollection(final Object ent) {
-    String name = collections.get(mapper.getMappedClass(ent));
-    if (name == null) {
-      register(mapper.getMappedClass(ent));
-      name = collections.get(mapper.getMappedClass(ent));
+    ArchivedEntity archivedEntity = collections.get(mapper.getMappedClass(ent));
+    if (archivedEntity == null) {
+      archivedEntity = register(mapper.getMappedClass(ent));
     }
-    return name;
+    return archivedEntity.getCollection();
   }
 
   private String calculateName(final MappedClass mapped, final Archived annotation) {
@@ -91,13 +110,22 @@ public class Curator implements EntityInterceptor {
   @Override
   public void preSave(final Object ent, final DBObject dbObj, final Mapper mapper) {
     if (dbObj.get("_id") != null) {
-      final DBObject archived = fetchForArchiving(ent, dbObj);
+      final MappedClass mappedClass = mapper.getMappedClass(ent);
+      final DBObject archived = fetchForArchiving(mappedClass, dbObj);
       final DB db = datastore.getDB();
       final DBCollection collection = db.getCollection(getArchiveCollection(ent));
-      long num = getNextArchiveNum(collection, archived);
+      long num = getNextArchiveNum(collection, archived.get(ARCHIVE_ID));
       archived.put(ARCH_NUM, num);
       collection.insert(archived);
+      executor.submit(() -> prune(collections.get(mappedClass), mapper.getId(ent)));
     }
+  }
+
+  private void prune(final ArchivedEntity archivedEntity, final Object id) {
+    final DBCollection collection = datastore.getDB().getCollection(archivedEntity.getCollection());
+    final BasicDBObject query = new BasicDBObject(ARCHIVE_ID, id)
+        .append(ARCH_NUM, new BasicDBObject("$lte", getLatestArchiveNum(collection, id) - archivedEntity.getCount()));
+    collection.remove(query);
   }
 
   @Override

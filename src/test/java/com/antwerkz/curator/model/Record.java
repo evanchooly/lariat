@@ -6,9 +6,11 @@ import org.mongodb.morphia.annotations.Entity;
 import org.mongodb.morphia.annotations.Id;
 import org.mongodb.morphia.annotations.Property;
 
-@Archived
+@Archived(count = Record.MAX_ARCHIVE_COUNT)
 @Entity("records")
 public class Record {
+    public static final int MAX_ARCHIVE_COUNT = 3;
+
     @Id
     private ObjectId id;
     private String name;
