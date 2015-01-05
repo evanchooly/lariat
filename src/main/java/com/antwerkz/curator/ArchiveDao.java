@@ -5,8 +5,8 @@ public interface ArchiveDao<T> {
     String ARCH_NUM = "_archNum";
 
     default T rollback(T entity)  {
-        return getCurator().rollback(entity);
+        return getArchiver().rollback(entity);
     }
 
-    Curator getCurator();
+    Curator getArchiver();
 }

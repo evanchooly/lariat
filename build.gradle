@@ -1,5 +1,5 @@
 apply plugin: 'java'
-apply plugin: 'com.evanchooly.nexus'
+apply plugin: 'com.bmuschko.nexus'
 
 buildscript {
     repositories {
@@ -7,14 +7,18 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.evanchooly:gradle-nexus-plugin:2.2'
+        classpath 'com.bmuschko:gradle-nexus-plugin:2.2'
     }
 }
+
 repositories {
     mavenLocal()
     mavenCentral()
     jcenter()
 }
+
+group = 'com.antwerkz.curator'
+version = '0.1-SNAPSHOT'
 
 test {
     useTestNG()
@@ -35,13 +39,13 @@ modifyPom {
     project {
         name 'Morphia Archiving Plugin'
         description 'Morphia extension that transparently archives old versions of entities allowing for rollbacks'
-        url 'https://github.com/evanchooly/morchivist'
+        url 'https://github.com/evanchooly/curator'
         inceptionYear '2014'
 
         scm {
-            url 'https://github.com/evanchooly/morchivist'
-            connection 'scm:https://github.com/evanchooly/morchivist.git'
-            developerConnection 'scm:git@github.com:evanchooly/morchivist.git'
+            url 'https://github.com/evanchooly/curator'
+            connection 'scm:https://github.com/evanchooly/curator.git'
+            developerConnection 'scm:git@github.com:evanchooly/curator.git'
         }
 
         licenses {

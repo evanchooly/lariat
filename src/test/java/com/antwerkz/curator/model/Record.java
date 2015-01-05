@@ -4,7 +4,6 @@ import com.antwerkz.curator.Archived;
 import org.bson.types.ObjectId;
 import org.mongodb.morphia.annotations.Entity;
 import org.mongodb.morphia.annotations.Id;
-import org.mongodb.morphia.annotations.Property;
 
 @Archived(count = Record.MAX_ARCHIVE_COUNT)
 @Entity("records")

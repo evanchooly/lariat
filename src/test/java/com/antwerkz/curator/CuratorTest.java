@@ -54,7 +54,7 @@ public class CuratorTest {
     validate(record, 0);
     for (int i = 1; i < 50; i++) {
       datastore.save(record.setContent("Value " + i));
-      validate(record, Math.min(i, Record.MAX_ARCHIVE_COUNT));
+      validate(record, i);
     }
   }
 
@@ -112,16 +112,25 @@ public class CuratorTest {
   }
 
   private void validate(final Record record, final long count) {
-    count(record, count);
-
-    long index = 0;
-    for (DBObject item : get(record)) {
-      assertEquals(item.get("content"), "Value " + index, format("Objects don't match:\n%s\n and \n%s", item, record));
-      assertEquals(item.get(ArchiveDao.ARCHIVE_ID), record.getId(),
-          format("Objects don't match:\n%s\n and \n%s", item, record));
-      assertEquals(item.get(ArchiveDao.ARCH_NUM), index);
-      index++;
+    final long target = Math.min(count, Record.MAX_ARCHIVE_COUNT);
+    count(record, target);
+    if (target > 0) {
+      long latest = count - 1;
+      long first = Math.max(0, latest - Record.MAX_ARCHIVE_COUNT + 1);
+      final List<DBObject> dbObjects = get(record);
+      for (DBObject dbObject : dbObjects) {
+        System.out.println("dbObject = " + dbObject);
+      }
+      evaluate(record, dbObjects.get(0), first);
+      evaluate(record, dbObjects.get(dbObjects.size() - 1), latest);
     }
+  }
+
+  private void evaluate(final Record record, final DBObject item, final long value) {
+    assertEquals(item.get("content"), "Value " + value, format("Objects don't match:\n%s\n and \n%s", item, record));
+    assertEquals(item.get(ArchiveDao.ARCHIVE_ID), record.getId(),
+        format("Objects don't match:\n%s\n and \n%s", item, record));
+    assertEquals(item.get(ArchiveDao.ARCH_NUM), value);
   }
 
   private void count(final Record record, final long count) {
