@@ -1,11 +1,12 @@
-package com.antwerkz.curator.model;
+package com.antwerkz.lariat.model;
 
-import com.antwerkz.curator.Archived;
+import com.antwerkz.lariat.Archived;
 import org.bson.types.ObjectId;
 import org.mongodb.morphia.annotations.Entity;
 import org.mongodb.morphia.annotations.Id;
+import org.mongodb.morphia.annotations.Property;
+import org.mongodb.morphia.annotations.Version;
 
-@Archived(count = Record.MAX_ARCHIVE_COUNT)
 @Entity("records")
 public class Record {
     public static final int MAX_ARCHIVE_COUNT = 3;
@@ -14,6 +15,9 @@ public class Record {
     private ObjectId id;
     private String name;
     private String content;
+    @Version
+    @Archived(count = Record.MAX_ARCHIVE_COUNT)
+    private long version;
 
     public Record() {
     }

@@ -1,12 +1,13 @@
-package com.antwerkz.curator;
+package com.antwerkz.lariat;
 
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import com.antwerkz.curator.model.Record;
+import com.antwerkz.lariat.model.Record;
 import static com.jayway.awaitility.Awaitility.await;
+import com.jayway.awaitility.core.ConditionTimeoutException;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBCollection;
 import com.mongodb.DBCursor;
@@ -16,12 +17,16 @@ import static java.lang.String.format;
 import org.mongodb.morphia.Datastore;
 import org.mongodb.morphia.DatastoreImpl;
 import org.mongodb.morphia.Morphia;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import static org.testng.Assert.assertEquals;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-public class CuratorTest {
-  public static final String DB_NAME = "curator_test";
+public class LariatTest {
+  private static final Logger LOG = LoggerFactory.getLogger(LariatTest.class);
+
+  public static final String DB_NAME = "lariat_test";
 
   public static final String ARCH_COLLECTION_NAME = "records_archive";
 
@@ -31,13 +36,13 @@ public class CuratorTest {
 
   private Datastore datastore;
 
-  private Curator curator;
+  private ArchiveInterceptor archiveInterceptor;
 
-  public CuratorTest() throws UnknownHostException {
+  public LariatTest() throws UnknownHostException {
     mongoClient = new MongoClient();
     datastore = new DatastoreImpl(morphia, mongoClient, DB_NAME);
-    curator = new Curator(datastore, morphia);
-    morphia.getMapper().addInterceptor(curator);
+    archiveInterceptor = new ArchiveInterceptor(datastore, morphia);
+    morphia.getMapper().addInterceptor(archiveInterceptor);
   }
 
   @BeforeMethod
@@ -46,14 +51,14 @@ public class CuratorTest {
   }
 
   @Test
-  public void archiving() throws Exception {
+  public void  archiving() throws Exception {
     assertEquals(count(ARCH_COLLECTION_NAME), 0, "Should find 0 archived records");
     morphia.map(Record.class);
-    final Record record = new Record("Record 1", "Value 0");
+    final Record record = new Record("Record 1", "Value 1");
     datastore.save(record);
     validate(record, 0);
     for (int i = 1; i < 50; i++) {
-      datastore.save(record.setContent("Value " + i));
+      datastore.save(record.setContent("Value " + (i + 1)));
       validate(record, i);
     }
   }
@@ -103,24 +108,21 @@ public class CuratorTest {
     datastore.save(record.setContent(content));
     DBObject archived = get(record).get(0);
     assertEquals(archived.get("content"), "Value 0");
-    assertEquals(archived.get(ArchiveDao.ARCHIVE_ID), record.getId());
-    assertEquals(archived.get(ArchiveDao.ARCH_NUM), 0L);
+    assertEquals(archived.get(ArchivedDao.ARCHIVE_ID), record.getId());
+    assertEquals(archived.get("version"), 1L);
     assertEquals(datastore.find(Record.class).get().getContent(), content);
-    curator.rollback(record);
+    archiveInterceptor.rollback(record);
     assertEquals(datastore.find(Record.class).get().getContent(), "Value 0");
-    assertEquals(count(ARCH_COLLECTION_NAME), 1, "Should find 1 archived records");
+    assertEquals(count(ARCH_COLLECTION_NAME), 0, "Should find 1 archived records");
   }
 
   private void validate(final Record record, final long count) {
     final long target = Math.min(count, Record.MAX_ARCHIVE_COUNT);
     count(record, target);
     if (target > 0) {
-      long latest = count - 1;
-      long first = Math.max(0, latest - Record.MAX_ARCHIVE_COUNT + 1);
+      long latest = count;
+      long first = Math.max(1, latest - Record.MAX_ARCHIVE_COUNT + 1);
       final List<DBObject> dbObjects = get(record);
-      for (DBObject dbObject : dbObjects) {
-        System.out.println("dbObject = " + dbObject);
-      }
       evaluate(record, dbObjects.get(0), first);
       evaluate(record, dbObjects.get(dbObjects.size() - 1), latest);
     }
@@ -128,24 +130,28 @@ public class CuratorTest {
 
   private void evaluate(final Record record, final DBObject item, final long value) {
     assertEquals(item.get("content"), "Value " + value, format("Objects don't match:\n%s\n and \n%s", item, record));
-    assertEquals(item.get(ArchiveDao.ARCHIVE_ID), record.getId(),
+    assertEquals(item.get(ArchivedDao.ARCHIVE_ID), record.getId(),
         format("Objects don't match:\n%s\n and \n%s", item, record));
-    assertEquals(item.get(ArchiveDao.ARCH_NUM), value);
+    assertEquals(item.get("version"), value);
   }
 
   private void count(final Record record, final long count) {
     final DBCollection collection = mongoClient.getDB(DB_NAME).getCollection(ARCH_COLLECTION_NAME);
-    await()
-        .atMost(5, TimeUnit.SECONDS)
-        .until(() -> collection.count(new BasicDBObject(ArchiveDao.ARCHIVE_ID, record.getId())) == count);
-    assertEquals(collection.count(new BasicDBObject(ArchiveDao.ARCHIVE_ID, record.getId())),
-        count, format("Should find %d archived records", count));
+    try {
+      await()
+          .atMost(5, TimeUnit.SECONDS)
+          .until(() -> collection.count(new BasicDBObject(ArchivedDao.ARCHIVE_ID, record.getId())) == count);
+    } catch (ConditionTimeoutException e) {
+      LOG.warn("Timed out waiting for the count.");
+    }
+    final long actual = collection.count(new BasicDBObject(ArchivedDao.ARCHIVE_ID, record.getId()));
+    assertEquals(actual, count, format("Should find %d archived records but found %d", count, actual));
   }
 
   private List<DBObject> get(final Record record) {
     final DBCursor list = mongoClient.getDB(DB_NAME).getCollection(ARCH_COLLECTION_NAME)
-        .find(new BasicDBObject(ArchiveDao.ARCHIVE_ID, record.getId()))
-        .sort(new BasicDBObject(ArchiveDao.ARCH_NUM, 1));
+        .find(new BasicDBObject(ArchivedDao.ARCHIVE_ID, record.getId()))
+        .sort(new BasicDBObject("version", 1));
     final List<DBObject> results = new ArrayList<>();
     for (DBObject dbObject : list) {
       results.add(dbObject);

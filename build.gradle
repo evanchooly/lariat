@@ -17,7 +17,7 @@ repositories {
     jcenter()
 }
 
-group = 'com.antwerkz.curator'
+group = 'com.antwerkz.lariat'
 version = '0.1-SNAPSHOT'
 
 test {
@@ -37,15 +37,15 @@ dependencies {
 
 modifyPom {
     project {
-        name 'Morphia Archiving Plugin'
+        name 'lariat'
         description 'Morphia extension that transparently archives old versions of entities allowing for rollbacks'
-        url 'https://github.com/evanchooly/curator'
+        url 'https://github.com/evanchooly/lariat'
         inceptionYear '2014'
 
         scm {
-            url 'https://github.com/evanchooly/curator'
-            connection 'scm:https://github.com/evanchooly/curator.git'
-            developerConnection 'scm:git@github.com:evanchooly/curator.git'
+            url 'https://github.com/evanchooly/lariat'
+            connection 'scm:https://github.com/evanchooly/lariat.git'
+            developerConnection 'scm:git@github.com:evanchooly/lariat.git'
         }
 
         licenses {

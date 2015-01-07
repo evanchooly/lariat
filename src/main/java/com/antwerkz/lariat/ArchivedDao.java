@@ -1,12 +1,11 @@
-package com.antwerkz.curator;
+package com.antwerkz.lariat;
 
-public interface ArchiveDao<T> {
+public interface ArchivedDao<T> {
     String ARCHIVE_ID = "_aid";
-    String ARCH_NUM = "_archNum";
 
     default T rollback(T entity)  {
         return getArchiver().rollback(entity);
     }
 
-    Curator getArchiver();
+    ArchiveInterceptor getArchiver();
 }
