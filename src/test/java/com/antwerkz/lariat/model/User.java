@@ -4,27 +4,25 @@ import com.antwerkz.lariat.Archived;
 import org.bson.types.ObjectId;
 import org.mongodb.morphia.annotations.Entity;
 import org.mongodb.morphia.annotations.Id;
-import org.mongodb.morphia.annotations.Property;
 import org.mongodb.morphia.annotations.Version;
 
-@Entity("records")
-public class Record {
-    public static final int MAX_ARCHIVE_COUNT = 3;
-
+@Entity("users")
+public class User {
     @Id
     private ObjectId id;
     private String name;
-    private String content;
-    @Version
-    @Archived(count = Record.MAX_ARCHIVE_COUNT)
-    private long version;
+    private int age;
 
-    public Record() {
+    @Version
+    @Archived(count = 100)
+    private Long version;
+
+    public User() {
     }
 
-    public Record(final String name, final String content) {
+    public User(final String name, final int age) {
         this.name = name;
-        this.content = content;
+        this.age = age;
     }
 
     public ObjectId getId() {
@@ -35,13 +33,12 @@ public class Record {
         this.id = id;
     }
 
-    public String getContent() {
-        return content;
+    public int getAge() {
+        return age;
     }
 
-    public Record setContent(final String content) {
-        this.content = content;
-        return this;
+    public void setAge(final int age) {
+        this.age = age;
     }
 
     public String getName() {
@@ -52,12 +49,12 @@ public class Record {
         this.name = name;
     }
 
-    public long getVersion() {
+    public Long getVersion() {
         return version;
     }
 
     @Override
     public String toString() {
-        return String.format("Record{id=%s, content='%s', name='%s'}", id, content, name);
+        return String.format("Record{id=%s, age='%s', name='%s'}", id, age, name);
     }
 }

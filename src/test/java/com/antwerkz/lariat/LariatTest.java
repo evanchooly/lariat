@@ -4,12 +4,10 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.concurrent.TimeUnit;
 
 import com.antwerkz.lariat.model.Item;
 import com.antwerkz.lariat.model.Record;
-import static com.jayway.awaitility.Awaitility.await;
-import com.jayway.awaitility.core.ConditionTimeoutException;
+import com.antwerkz.lariat.model.User;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBCollection;
 import com.mongodb.DBCursor;
@@ -19,15 +17,12 @@ import static java.lang.String.format;
 import org.mongodb.morphia.Datastore;
 import org.mongodb.morphia.DatastoreImpl;
 import org.mongodb.morphia.Morphia;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.testng.Assert;
 import static org.testng.Assert.assertEquals;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 public class LariatTest {
-  private static final Logger LOG = LoggerFactory.getLogger(LariatTest.class);
-
   public static final String DB_NAME = "lariat_test";
 
   public static final String ARCH_COLLECTION_NAME = "records_archive";
@@ -38,13 +33,18 @@ public class LariatTest {
 
   private Datastore datastore;
 
-  private ArchiveInterceptor archiveInterceptor;
+  private UserDao userDao;
+
+  private RecordDao recordDao;
 
   public LariatTest() throws UnknownHostException {
     mongoClient = new MongoClient();
     datastore = new DatastoreImpl(morphia, mongoClient, DB_NAME);
-    archiveInterceptor = new ArchiveInterceptor(datastore, morphia);
-    morphia.getMapper().addInterceptor(archiveInterceptor);
+    final ArchiveInterceptor interceptor = new ArchiveInterceptor(datastore, morphia);
+
+    morphia.getMapper().addInterceptor(interceptor);
+    recordDao = new RecordDao(datastore, interceptor);
+    userDao = new UserDao(datastore, interceptor);
   }
 
   @BeforeMethod
@@ -53,7 +53,7 @@ public class LariatTest {
   }
 
   @Test
-  public void  archiving() throws Exception {
+  public void archiving() throws Exception {
     assertEquals(count(ARCH_COLLECTION_NAME), 0, "Should find 0 archived records");
     morphia.map(Record.class);
     final Record record = new Record("Record 1", "Value 1");
@@ -110,10 +110,10 @@ public class LariatTest {
     datastore.save(record.setContent(content));
     DBObject archived = get(record).get(0);
     assertEquals(archived.get("content"), "Value 0");
-    assertEquals(archived.get(ArchivedDao.ARCHIVE_ID), record.getId());
+    assertEquals(archived.get(ArchiveInterceptor.ARCHIVE_ID), record.getId());
     assertEquals(archived.get("version"), 1L);
     assertEquals(datastore.find(Record.class).get().getContent(), content);
-    archiveInterceptor.rollback(record);
+    recordDao.rollback(record);
     assertEquals(datastore.find(Record.class).get().getContent(), "Value 0");
     assertEquals(count(ARCH_COLLECTION_NAME), 0, "Should find 1 archived records");
   }
@@ -134,7 +134,26 @@ public class LariatTest {
     final Record record = new Record("Record 1", "Value 0");
     datastore.save(record);
 
-    archiveInterceptor.rollback(record);
+    recordDao.rollback(record);
+  }
+
+  @Test
+  public void rollbackToVersion() {
+    final String usersArchive = "users_archive";
+    assertEquals(count(usersArchive), 0, "Should find 0 archived records");
+    morphia.map(User.class);
+    final User user = new User("Bob Dylan", 60);
+    userDao.save(user);
+    for (int i = 1; i < 50; i++) {
+      user.setAge(user.getAge() + i);
+      userDao.save(user);
+    }
+
+    Assert.assertEquals(user.getVersion(), new Long(50));
+
+    final User rolledBack = userDao.rollbackToVersion(user, 20);
+    Assert.assertEquals(rolledBack.getVersion(), new Long(20));
+    assertEquals(count(usersArchive), 19, "Should find 20 archived users");
   }
 
   private void validate(final Record record, final long count) {
@@ -149,20 +168,20 @@ public class LariatTest {
 
   private void evaluate(final Record record, final DBObject item, final long value) {
     assertEquals(item.get("content"), "Value " + value, format("Objects don't match:\n%s\n and \n%s", item, record));
-    assertEquals(item.get(ArchivedDao.ARCHIVE_ID), record.getId(),
+    assertEquals(item.get(ArchiveInterceptor.ARCHIVE_ID), record.getId(),
         format("Objects don't match:\n%s\n and \n%s", item, record));
     assertEquals(item.get("version"), value);
   }
 
   private void count(final Record record, final long count) {
     final DBCollection collection = mongoClient.getDB(DB_NAME).getCollection(ARCH_COLLECTION_NAME);
-    final long actual = collection.count(new BasicDBObject(ArchivedDao.ARCHIVE_ID, record.getId()));
+    final long actual = collection.count(new BasicDBObject(ArchiveInterceptor.ARCHIVE_ID, record.getId()));
     assertEquals(actual, count, format("Should find %d archived records but found %d", count, actual));
   }
 
   private List<DBObject> get(final Record record) {
     final DBCursor list = mongoClient.getDB(DB_NAME).getCollection(ARCH_COLLECTION_NAME)
-        .find(new BasicDBObject(ArchivedDao.ARCHIVE_ID, record.getId()))
+        .find(new BasicDBObject(ArchiveInterceptor.ARCHIVE_ID, record.getId()))
         .sort(new BasicDBObject("version", 1));
     final List<DBObject> results = new ArrayList<>();
     for (DBObject dbObject : list) {

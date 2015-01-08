@@ -5,7 +5,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
-import static com.antwerkz.lariat.ArchivedDao.ARCHIVE_ID;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DB;
 import com.mongodb.DBCollection;
@@ -23,6 +22,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class ArchiveInterceptor implements EntityInterceptor {
+  public static final String ARCHIVE_ID = "_aid";
+
   private static final Logger LOG = LoggerFactory.getLogger(ArchiveInterceptor.class);
 
   private Datastore datastore;
@@ -58,42 +59,60 @@ public class ArchiveInterceptor implements EntityInterceptor {
     return archivedEntity;
   }
 
-  @SuppressWarnings("unchecked")
   public <T> T rollback(final T entity) {
-    final MappedClass mappedClass = mapper.getMappedClass(entity);
-    final ArchivedEntity archivedEntity = getArchivedEntity(entity);
+    final long version = getVersion(entity);
+    return rollbackToVersion(entity, version - 1);
+  }
 
-    final DBCollection collection = datastore.getDB().getCollection(archivedEntity.getCollection());
-
+  public <T> T rollbackToVersion(final T entity, final long targetVersion) {
     final long version = getVersion(entity);
 
     final Object id = mapper.getId(entity);
+    final ArchivedEntity archivedEntity = getArchivedEntity(entity);
 
-    final BasicDBObject previousQuery = new BasicDBObject(ARCHIVE_ID, id)
-        .append(archivedEntity.getFieldName(), version - 1);
-    final BasicDBObject previous = (BasicDBObject) collection.findOne(previousQuery);
-    if(previous == null) {
-      throw new NoSuchElementException(format("No archived versions for %s with and ID of %s", entity.getClass(), id));
+    final T t = rollbackToVersion(archivedEntity, entity, id, version, targetVersion);
+    removeExpiredStates(archivedEntity, id, targetVersion);
+    return t;
+  }
+
+  private void removeExpiredStates(final ArchivedEntity archivedEntity, final Object id, final long targetVersion) {
+    final DBCollection archCollection = datastore.getDB().getCollection(archivedEntity.getCollection());
+    final BasicDBObject removeQuery = new BasicDBObject(archivedEntity.getFieldName(),
+        new BasicDBObject("$gte", targetVersion))
+        .append(ARCHIVE_ID, id);
+    final WriteResult result = archCollection.remove(removeQuery);
+    if (result.getN() > 1) {
+      LOG.warn("More than the expected number of versions was removed on rollback.  Possible concurrent updates"
+          + "in progress.");
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private <T> T rollbackToVersion(final ArchivedEntity archivedEntity,
+      final T entity, final Object id, final long oldVersion,
+      final long targetVersion) {
+
+    final MappedClass mappedClass = mapper.getMappedClass(entity);
+    final DBCollection archCollection = datastore.getDB().getCollection(archivedEntity.getCollection());
+
+    final BasicDBObject previous = (BasicDBObject) archCollection.findOne(
+        new BasicDBObject(ARCHIVE_ID, id)
+            .append(archivedEntity.getFieldName(), targetVersion));
+    if (previous == null) {
+      throw new NoSuchElementException(format("No archived versions for %s with and ID of %s",
+          mappedClass.getClazz().getName(), id));
     }
 
     previous.put("_id", previous.remove(ARCHIVE_ID));
 
-    final BasicDBObject removeQuery = new BasicDBObject(archivedEntity.getFieldName(),
-        new BasicDBObject("$gte", version - 1))
-        .append(ARCHIVE_ID, id);
-    final WriteResult result = collection.remove(removeQuery);
-    if (result.getN() > 1 ) {
-      LOG.warn("More than the expected number of versions was removed on rollback.  Possible concurrent updates"
-          + "in progress.");
-    }
-    final T t = (T) morphia.fromDBObject(entity.getClass(), previous);
-    final BasicDBObject query = new BasicDBObject("_id", id).append(archivedEntity.getFieldName(), version);
     final WriteResult update = datastore.getDB().getCollection(mappedClass.getCollectionName())
-        .update(query, previous);
-    if(update.getN() != 1) {
+        .update(new BasicDBObject("_id", id).append(archivedEntity.getFieldName(), oldVersion), previous);
+
+    if (update.getN() != 1) {
       throw new ConcurrentModificationException("Unable to rollback to the expected version");
     }
-    return t;
+    final Class<T> aClass = (Class<T>) entity.getClass();
+    return morphia.fromDBObject(aClass, previous);
   }
 
   private long getVersion(Object entity) {
