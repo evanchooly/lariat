@@ -143,15 +143,20 @@ public class LariatTest {
     morphia.map(User.class);
     final User user = new User("Bob Dylan", 60);
     userDao.save(user);
+    User history = null;
     for (int i = 1; i < 50; i++) {
       user.setAge(user.getAge() + i);
       userDao.save(user);
+      if(user.getVersion() == 20) {
+        history = userDao.get(user.getId());
+      }
     }
 
     assertEquals(user.getVersion(), new Long(50));
 
     final User rolledBack = userDao.rollbackToVersion(user, 20);
     assertEquals(rolledBack.getVersion(), new Long(20));
+    assertEquals(rolledBack, history);
     assertEquals(userDao.countVersions(rolledBack), 19, "Should find 20 archived users");
   }
 
