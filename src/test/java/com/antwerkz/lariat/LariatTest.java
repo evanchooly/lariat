@@ -3,8 +3,10 @@ package com.antwerkz.lariat;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.concurrent.TimeUnit;
 
+import com.antwerkz.lariat.model.Item;
 import com.antwerkz.lariat.model.Record;
 import static com.jayway.awaitility.Awaitility.await;
 import com.jayway.awaitility.core.ConditionTimeoutException;
@@ -116,15 +118,32 @@ public class LariatTest {
     assertEquals(count(ARCH_COLLECTION_NAME), 0, "Should find 1 archived records");
   }
 
+  @Test
+  public void nonArchived() {
+    final Item book = new Item("Book", 42);
+    morphia.mapPackage(Item.class.getPackage().getName());
+    datastore.save(book);
+    assertEquals(count("items"), 1, "Should find 1 archived records");
+    assertEquals(count("items_archive"), 0, "Should find 0 archived records");
+  }
+
+  @Test(expectedExceptions = {NoSuchElementException.class})
+  public void noArchivedStateToRollback() {
+    assertEquals(count(ARCH_COLLECTION_NAME), 0, "Should find 0 archived records");
+    morphia.map(Record.class);
+    final Record record = new Record("Record 1", "Value 0");
+    datastore.save(record);
+
+    archiveInterceptor.rollback(record);
+  }
+
   private void validate(final Record record, final long count) {
     final long target = Math.min(count, Record.MAX_ARCHIVE_COUNT);
     count(record, target);
     if (target > 0) {
-      long latest = count;
-      long first = Math.max(1, latest - Record.MAX_ARCHIVE_COUNT + 1);
       final List<DBObject> dbObjects = get(record);
-      evaluate(record, dbObjects.get(0), first);
-      evaluate(record, dbObjects.get(dbObjects.size() - 1), latest);
+      evaluate(record, dbObjects.get(0), Math.max(1, count - Record.MAX_ARCHIVE_COUNT + 1));
+      evaluate(record, dbObjects.get(dbObjects.size() - 1), count);
     }
   }
 
@@ -137,13 +156,6 @@ public class LariatTest {
 
   private void count(final Record record, final long count) {
     final DBCollection collection = mongoClient.getDB(DB_NAME).getCollection(ARCH_COLLECTION_NAME);
-    try {
-      await()
-          .atMost(5, TimeUnit.SECONDS)
-          .until(() -> collection.count(new BasicDBObject(ArchivedDao.ARCHIVE_ID, record.getId())) == count);
-    } catch (ConditionTimeoutException e) {
-      LOG.warn("Timed out waiting for the count.");
-    }
     final long actual = collection.count(new BasicDBObject(ArchivedDao.ARCHIVE_ID, record.getId()));
     assertEquals(actual, count, format("Should find %d archived records but found %d", count, actual));
   }

@@ -3,6 +3,7 @@ package com.antwerkz.lariat;
 import java.util.ConcurrentModificationException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 import static com.antwerkz.lariat.ArchivedDao.ARCHIVE_ID;
 import com.mongodb.BasicDBObject;
@@ -10,6 +11,7 @@ import com.mongodb.DB;
 import com.mongodb.DBCollection;
 import com.mongodb.DBObject;
 import com.mongodb.WriteResult;
+import static java.lang.String.format;
 import org.mongodb.morphia.Datastore;
 import org.mongodb.morphia.EntityInterceptor;
 import org.mongodb.morphia.Morphia;
@@ -70,6 +72,9 @@ public class ArchiveInterceptor implements EntityInterceptor {
     final BasicDBObject previousQuery = new BasicDBObject(ARCHIVE_ID, id)
         .append(archivedEntity.getFieldName(), version - 1);
     final BasicDBObject previous = (BasicDBObject) collection.findOne(previousQuery);
+    if(previous == null) {
+      throw new NoSuchElementException(format("No archived versions for %s with and ID of %s", entity.getClass(), id));
+    }
 
     previous.put("_id", previous.remove(ARCHIVE_ID));
 
