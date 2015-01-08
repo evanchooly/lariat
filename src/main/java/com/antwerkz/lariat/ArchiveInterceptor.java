@@ -149,6 +149,20 @@ public class ArchiveInterceptor implements EntityInterceptor {
     return archivedEntity.getCollection();
   }
 
+  public long countVersions(final Object entity) {
+
+    return datastore.getDB()
+        .getCollection(getArchivedEntity(entity).getCollection())
+        .count(new BasicDBObject(ARCHIVE_ID, mapper.getId(entity)));
+  }
+
+  private void prune(final ArchivedEntity archivedEntity, final Object id, final long version) {
+    final DBCollection collection = datastore.getDB().getCollection(archivedEntity.getCollection());
+    final BasicDBObject query = new BasicDBObject(ARCHIVE_ID, id)
+        .append(archivedEntity.getFieldName(), new BasicDBObject("$lte", version - archivedEntity.getCount()));
+    collection.remove(query);
+  }
+
   @Override
   public void preSave(final Object ent, final DBObject dbObj, final Mapper mapper) {
     final ArchivedEntity archivedEntity = getArchivedEntity(ent);
@@ -159,13 +173,6 @@ public class ArchiveInterceptor implements EntityInterceptor {
       collection.insert(archived);
       prune(archivedEntity, mapper.getId(ent), getVersion(ent));
     }
-  }
-
-  private void prune(final ArchivedEntity archivedEntity, final Object id, final long version) {
-    final DBCollection collection = datastore.getDB().getCollection(archivedEntity.getCollection());
-    final BasicDBObject query = new BasicDBObject(ARCHIVE_ID, id)
-        .append(archivedEntity.getFieldName(), new BasicDBObject("$lte", version - archivedEntity.getCount()));
-    collection.remove(query);
   }
 
   @Override

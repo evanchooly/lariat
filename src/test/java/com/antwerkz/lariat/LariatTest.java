@@ -17,7 +17,6 @@ import static java.lang.String.format;
 import org.mongodb.morphia.Datastore;
 import org.mongodb.morphia.DatastoreImpl;
 import org.mongodb.morphia.Morphia;
-import org.testng.Assert;
 import static org.testng.Assert.assertEquals;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -73,30 +72,30 @@ public class LariatTest {
     final Record record2 = new Record("Record 2", "Value 0");
     datastore.save(record1);
     datastore.save(record2);
-    count(record1, 0);
-    count(record2, 0);
+    assertEquals(recordDao.countVersions(record1), 0);
+    assertEquals(recordDao.countVersions(record2), 0);
 
     datastore.save(record1.setContent("Value 1"));
     datastore.save(record2.setContent("Value 1"));
-    count(record1, 1);
-    count(record2, 1);
+    assertEquals(recordDao.countVersions(record1), 1);
+    assertEquals(recordDao.countVersions(record2), 1);
 
     datastore.save(record1.setContent("Value 2"));
     datastore.save(record2.setContent("Value 2"));
-    count(record1, 2);
-    count(record2, 2);
+    assertEquals(recordDao.countVersions(record1), 2);
+    assertEquals(recordDao.countVersions(record2), 2);
 
     datastore.save(record1.setContent("Value 3"));
-    count(record1, 3);
-    count(record2, 2);
+    assertEquals(recordDao.countVersions(record1), 3);
+    assertEquals(recordDao.countVersions(record2), 2);
 
     datastore.save(record1.setContent("Value 4"));
-    count(record1, 3);
-    count(record2, 2);
+    assertEquals(recordDao.countVersions(record1), 3);
+    assertEquals(recordDao.countVersions(record2), 2);
 
     datastore.save(record1.setContent("Value 5"));
-    count(record1, 3);
-    count(record2, 2);
+    assertEquals(recordDao.countVersions(record1), 3);
+    assertEquals(recordDao.countVersions(record2), 2);
   }
 
   @Test
@@ -106,6 +105,7 @@ public class LariatTest {
     final Record record = new Record("Record 1", "Value 0");
     datastore.save(record);
     validate(record, 0);
+
     final String content = "I should get rolledback";
     datastore.save(record.setContent(content));
     DBObject archived = get(record).get(0);
@@ -139,8 +139,7 @@ public class LariatTest {
 
   @Test
   public void rollbackToVersion() {
-    final String usersArchive = "users_archive";
-    assertEquals(count(usersArchive), 0, "Should find 0 archived records");
+    assertEquals(count("users_archive"), 0, "Should find 0 archived records");
     morphia.map(User.class);
     final User user = new User("Bob Dylan", 60);
     userDao.save(user);
@@ -149,16 +148,16 @@ public class LariatTest {
       userDao.save(user);
     }
 
-    Assert.assertEquals(user.getVersion(), new Long(50));
+    assertEquals(user.getVersion(), new Long(50));
 
     final User rolledBack = userDao.rollbackToVersion(user, 20);
-    Assert.assertEquals(rolledBack.getVersion(), new Long(20));
-    assertEquals(count(usersArchive), 19, "Should find 20 archived users");
+    assertEquals(rolledBack.getVersion(), new Long(20));
+    assertEquals(userDao.countVersions(rolledBack), 19, "Should find 20 archived users");
   }
 
   private void validate(final Record record, final long count) {
     final long target = Math.min(count, Record.MAX_ARCHIVE_COUNT);
-    count(record, target);
+    assertEquals(recordDao.countVersions(record), target);
     if (target > 0) {
       final List<DBObject> dbObjects = get(record);
       evaluate(record, dbObjects.get(0), Math.max(1, count - Record.MAX_ARCHIVE_COUNT + 1));
@@ -171,12 +170,6 @@ public class LariatTest {
     assertEquals(item.get(ArchiveInterceptor.ARCHIVE_ID), record.getId(),
         format("Objects don't match:\n%s\n and \n%s", item, record));
     assertEquals(item.get("version"), value);
-  }
-
-  private void count(final Record record, final long count) {
-    final DBCollection collection = mongoClient.getDB(DB_NAME).getCollection(ARCH_COLLECTION_NAME);
-    final long actual = collection.count(new BasicDBObject(ArchiveInterceptor.ARCHIVE_ID, record.getId()));
-    assertEquals(actual, count, format("Should find %d archived records but found %d", count, actual));
   }
 
   private List<DBObject> get(final Record record) {
