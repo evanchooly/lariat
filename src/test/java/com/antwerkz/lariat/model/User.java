@@ -8,13 +8,14 @@ import org.mongodb.morphia.annotations.Version;
 
 @Entity("users")
 public class User {
+    public static final int ARCHIVE_COUNT = 100;
     @Id
     private ObjectId id;
     private String name;
     private int age;
 
     @Version
-    @Archived(count = 100)
+    @Archived(count = ARCHIVE_COUNT)
     private Long version;
 
     public User() {

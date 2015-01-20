@@ -1,13 +1,19 @@
 apply plugin: 'java'
+apply plugin: 'idea'
 apply plugin: 'com.bmuschko.nexus'
+apply plugin: 'provided-base'
 
 buildscript {
     repositories {
+        mavenLocal()
+        maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
         jcenter()
+        mavenCentral()
     }
 
     dependencies {
         classpath 'com.bmuschko:gradle-nexus-plugin:2.2'
+        classpath 'com.netflix.nebula:gradle-extra-configurations-plugin:1.12.+'
     }
 }
 
@@ -28,11 +34,17 @@ sourceCompatibility = JavaVersion.VERSION_1_8
 targetCompatibility = JavaVersion.VERSION_1_8
 
 dependencies {
-    compile 'org.slf4j:slf4j-api:1.7.5'
-    compile 'org.mongodb.morphia:morphia:0.109'
+    provided 'org.slf4j:slf4j-api:1.7.5'
+    provided 'org.mongodb.morphia:morphia:0.109'
 
     testCompile 'com.jayway.awaitility:awaitility:1.6.1'
     testCompile 'org.testng:testng:6.8.1'
+}
+
+idea {
+    module {
+        scopes.PROVIDED.plus += [configurations.provided]
+    }
 }
 
 modifyPom {

@@ -1,17 +1,21 @@
 package com.antwerkz.lariat;
 
-public interface ArchivedDao<T> {
-  default long countVersions(T entity) {
+public interface ArchivedDao<T, K> {
+  default long countVersions(final T entity) {
     return getArchiver().countVersions(entity);
   }
 
-  default T rollback(T entity) {
-    return getArchiver().rollback(entity);
+  default T findArchivedVersion(final T entity, final long targetVersion) {
+    return getArchiver().findArchivedVersion(entity, targetVersion);
   }
 
-  default T rollbackToVersion(final T entity, final long targetVersion) {
-    return getArchiver().rollbackToVersion(entity, targetVersion);
+  default T revert(final T entity) {
+    return getArchiver().revert(entity);
   }
 
-  ArchiveInterceptor getArchiver();
+  default T revertToVersion(final T entity, final long targetVersion) {
+    return getArchiver().revertToVersion(entity, targetVersion);
+  }
+
+  ArchiveInterceptor<T, K> getArchiver();
 }
