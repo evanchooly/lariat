@@ -41,7 +41,9 @@ public class ArchiveInterceptor<T, K> implements EntityInterceptor {
         this.morphia = morphia;
         this.mapper = morphia.getMapper();
         this.clazz = clazz;
+    }
 
+    public void createIndexes() {
         mapper.getMappedClasses().stream()
                 .filter(m -> !m.getFieldsAnnotatedWith(Archived.class).isEmpty())
                 .forEach(this::register);
