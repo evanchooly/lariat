@@ -24,7 +24,7 @@ repositories {
 }
 
 group = 'com.antwerkz.lariat'
-version = '0.2-SNAPSHOT'
+version = '0.2'
 
 test {
     useTestNG()
